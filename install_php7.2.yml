@@ -1,0 +1,85 @@
+---
+- hosts: all
+  become: yes
+  tasks:
+    - name: Update sources.list
+      replace:
+        path: /etc/apt/sources.list
+        regexp: jessie
+        replace: stretch
+
+    - name: Update package lists
+      apt:
+        update_cache: yes
+
+    - name: Install debian-keyring package
+      apt:
+        name: debian-keyring
+        state: present
+
+    - name: Upgrade system packages
+      apt:
+        upgrade: dist
+        autoremove: yes
+        autoclean: yes
+
+    - name: Install tranport-https
+      apt:
+        name: apt-transport-https
+        state: present
+
+    - name: Add Sury PHP repository key
+      apt_key:
+        url: https://debian.octopuce.fr/sury-php/apt.gpg
+        state: present
+      become: true
+
+    - name: Add Sury PHP repository and update apt cache
+      apt_repository:
+        repo: 'deb https://debian.octopuce.fr/snapshots/sury-php/20220630/ stretch main'
+        filename: php.list
+        state: present
+      become: true
+
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+      become: true
+
+    - name: Install PHP 7.2 and required packages
+      apt:
+        name:
+          - php7.2
+          - php7.2-fpm
+          - php7.2-mysql
+        state: present
+
+    - name: Copy www.conf file to php7.2-fpm
+      become: yes
+      copy:
+        src: www.conf
+        dest: /etc/php/7.2/fpm/pool.d/www.conf
+
+    - name: Delete php5.6
+      apt:
+        name:
+         - php5
+         - php5-fpm
+         - php5-mysql
+        state: absent
+
+    - name: Restart php7.2-fpm service
+      become: yes
+      systemd:
+        name: php7.2-fpm
+        state: restarted
+
+    - name: Restart Apache service
+      service:
+        name: apache2
+        state: restarted
+
+    - name: Restart Nginx service
+      service:
+        name: nginx
+        state: restarted

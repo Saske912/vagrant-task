@@ -2,42 +2,79 @@
 - hosts: all
   become: yes
   tasks:
-    # Установка Vim, Wget, Htop, Tmux
     - name: Install basic packages
       apt:
         name: "{{ item }}"
         state: present
+        allow_unauthenticated: yes
       with_items:
         - vim
         - wget
         - htop
         - tmux
+        - nginx
+        - php5
+        - php5-fpm
+        - php5-mysql
 
-    # Установка PHP 5.6
-    - name: Install PHP 5.6
-      apt_repository:
-        repo: ppa:ondrej/php
-        state: present
-      when: ansible_distribution_release == 'jessie'
-    - name: Install PHP 5.6 packages
-      apt:
-        name: "{{ item }}"
-        state: present
-      with_items:
-        - php5.6
-        - php5.6-cli
-        - php5.6-fpm
-        - php5.6-mysql
-        - php5.6-curl
-        - php5.6-mbstring
-
-    # Установка Nginx
-    - name: Install Nginx
-      apt:
-        name: nginx
-        state: present
     - name: Configure Nginx
       template:
         src: nginx.conf
         dest: /etc/nginx/sites-available/default
-      notify: restart
+
+    - name: Configure PHP5-FPM pool
+      template:
+        src: www.conf
+        dest: /etc/php5/fpm/pool.d/www.conf
+      notify: Restart PHP5-FPM
+
+    - name: Найти файлы
+      find:
+        paths: "/var/www/html/"
+        patterns: "index.*"
+        use_regex: yes
+      register: found_files
+
+    - name: Удалить найденные файлы
+      file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ found_files.files }}"
+
+    - name: Configure php page
+      template:
+        src: index.php
+        dest: /var/www/html/index.php
+
+    - name: Change file owner to www-data
+      file:
+        path: /var/www/html/index.php
+        owner: www-data
+        group: www-data
+      notify:  Restart nginx service
+
+    - name: Configure Apache2 to listen on port 8888
+      lineinfile:
+        path: /etc/apache2/ports.conf
+        regexp: '^Listen'
+        line: 'Listen 8888'
+      become: true
+      notify: Restart Apache2 service
+
+  handlers:
+    - name: Restart PHP5-FPM
+      service:
+        name: php5-fpm
+        state: restarted
+
+    - name: Restart Apache2 service
+      service:
+        name: apache2
+        state: restarted
+      become: true
+
+    - name: Restart nginx service
+      service:
+        name: nginx
+        state: restarted
+      become: true
